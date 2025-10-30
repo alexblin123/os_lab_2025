@@ -1,0 +1,8 @@
+#!/bin/bash
+echo "Текущая директория: "
+pwd
+echo "Текущая дата и время: "
+dt=$(date '+%d/%m/%Y %H:%M:%S');
+echo "$dt"
+echo "Содержимое переменной PATH: "
+echo $PATH
