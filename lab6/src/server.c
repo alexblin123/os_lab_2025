@@ -10,8 +10,8 @@
 #include <netinet/ip.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-
-#include "pthread.h"
+#include <pthread.h>
+#include "utils.h"
 
 struct FactorialArgs {
   uint64_t begin;
@@ -19,30 +19,21 @@ struct FactorialArgs {
   uint64_t mod;
 };
 
-uint64_t MultModulo(uint64_t a, uint64_t b, uint64_t mod) {
-  uint64_t result = 0;
-  a = a % mod;
-  while (b > 0) {
-    if (b % 2 == 1)
-      result = (result + a) % mod;
-    a = (a * 2) % mod;
-    b /= 2;
-  }
 
-  return result % mod;
-}
-
+// Реализация вычисления частичного факториала
 uint64_t Factorial(const struct FactorialArgs *args) {
   uint64_t ans = 1;
-
-  // TODO: your code here
-
+  // Просто перемножаем все числа от begin до end по модулю
+  for (uint64_t i = args->begin; i <= args->end; i++) {
+      ans = MultModulo(ans, i, args->mod);
+  }
   return ans;
 }
 
 void *ThreadFactorial(void *args) {
   struct FactorialArgs *fargs = (struct FactorialArgs *)args;
-  return (void *)(uint64_t *)Factorial(fargs);
+  // Приводим результат к void* через uint64_t (хак для передачи числа через указатель)
+  return (void *)(uint64_t)Factorial(fargs);
 }
 
 int main(int argc, char **argv) {
@@ -67,11 +58,9 @@ int main(int argc, char **argv) {
       switch (option_index) {
       case 0:
         port = atoi(optarg);
-        // TODO: your code here
         break;
       case 1:
         tnum = atoi(optarg);
-        // TODO: your code here
         break;
       default:
         printf("Index %d is out of options\n", option_index);
@@ -157,11 +146,28 @@ int main(int argc, char **argv) {
       fprintf(stdout, "Receive: %llu %llu %llu\n", begin, end, mod);
 
       struct FactorialArgs args[tnum];
-      for (uint32_t i = 0; i < tnum; i++) {
-        // TODO: parallel somehow
-        args[i].begin = 1;
-        args[i].end = 1;
+      
+      // === ЛОГИКА РАСПАРАЛЛЕЛИВАНИЯ МЕЖДУ ПОТОКАМИ ===
+      // Вычисляем размер диапазона для каждого потока
+      uint64_t count = end - begin + 1; // Сколько всего чисел
+      uint64_t range = count / tnum;    // Сколько чисел на один поток
+      
+      for (int i = 0; i < tnum; i++) {
         args[i].mod = mod;
+        args[i].begin = begin + i * range;
+        
+        // Если это последний поток, он берет всё, что осталось до конца
+        if (i == tnum - 1) {
+            args[i].end = end;
+        } else {
+            args[i].end = args[i].begin + range - 1;
+        }
+        
+        // Пропускаем создание потока, если диапазон пуст (бывает, если чисел меньше чем потоков)
+        if (args[i].begin > args[i].end) {
+             // Здесь можно логику обработки добавить, но для простоты опустим
+             continue; 
+        }
 
         if (pthread_create(&threads[i], NULL, ThreadFactorial,
                            (void *)&args[i])) {
@@ -171,11 +177,12 @@ int main(int argc, char **argv) {
       }
 
       uint64_t total = 1;
-      for (uint32_t i = 0; i < tnum; i++) {
+      for (int i = 0; i < tnum; i++) {
         uint64_t result = 0;
         pthread_join(threads[i], (void **)&result);
         total = MultModulo(total, result, mod);
       }
+      // ===============================================
 
       printf("Total: %llu\n", total);
 
